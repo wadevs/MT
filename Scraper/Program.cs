@@ -13,7 +13,10 @@ class Program
     {
         var mvnRepositoryBaseUrl = "http://mvnrepository.com";
         var mvnCentralBaseUrl = "http://central.sonatype.com";
-        var mvnrepositorySearchOptions = "/search?q=java%20library&sort=popular";
+        var searchQuery = "java%20library%20github";
+        var sortOption = "popular";
+        var pageNb = 1;
+        var mvnrepositorySearchOptions = $"/search?q={searchQuery}&p={pageNb}&sort={sortOption}";
         var _program = new Program();
         // We will store the html response of the request here
         var siteContent = string.Empty;
@@ -42,7 +45,15 @@ class Program
             var mvnDetailPageDocument = parser.ParseDocument(mvnDetailPageContent);
             var centralDetailPageDocument = parser.ParseDocument(centralDetailPageContent);
 
-            var githubLinkNode = centralDetailPageDocument.QuerySelectorAll("a").Where(n => n.Attributes["href"].Text().Contains("github"));
+            var titleNode = mvnDetailPageDocument.QuerySelector("title");
+            var title = titleNode?.TextContent;
+            var githubLinkNodes = centralDetailPageDocument.QuerySelectorAll("a").Where(n => n.Attributes["href"]?.Text().Contains("github") ?? false);
+            var githubLinks = string.Join(',', githubLinkNodes.Select(n => n.Attributes["href"]?.TextContent));
+
+            if (!string.IsNullOrWhiteSpace(githubLinks))
+            {
+                Console.WriteLine($"{title} : {githubLinks}");
+            }
         }
     }
 
