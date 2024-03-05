@@ -26,14 +26,17 @@ class Program
         var config = Configuration.Default.WithDefaultLoader();
         var context = BrowsingContext.New(config);
         var parser = context.GetService<IHtmlParser>();
-        var document = parser.ParseDocument(siteContent);
+        var document = parser?.ParseDocument(siteContent);
 
-        var artifactLinkNodes = document.QuerySelectorAll("[href]").Where(n => n.Attributes["href"].Text().Contains("artifact"));
+        var artifactLinkNodes = document?.QuerySelectorAll("[href]").Where(n => n.Attributes["href"]?.Text().Contains("artifact") ?? false);
 
         var artifactLinks = new List<string>();
-        foreach (var link in artifactLinkNodes)
+        foreach (var link in artifactLinkNodes?.Select(ln => ln.Attributes["href"]?.TextContent) ?? new List<string>())
         {
-            artifactLinks.Add(link.Attributes["href"]?.Text());
+            if (link is not null)
+            {
+                artifactLinks.Add(link);
+            }
         }
         artifactLinks = artifactLinks.Distinct().ToList();
 
@@ -42,13 +45,13 @@ class Program
             var mvnDetailPageContent = await _program.GetContentAsync(mvnRepositoryBaseUrl + artifactLink);
             var centralDetailPageContent = await _program.GetContentAsync(mvnCentralBaseUrl + artifactLink);
 
-            var mvnDetailPageDocument = parser.ParseDocument(mvnDetailPageContent);
-            var centralDetailPageDocument = parser.ParseDocument(centralDetailPageContent);
+            var mvnDetailPageDocument = parser?.ParseDocument(mvnDetailPageContent);
+            var centralDetailPageDocument = parser?.ParseDocument(centralDetailPageContent);
 
-            var titleNode = mvnDetailPageDocument.QuerySelector("title");
+            var titleNode = mvnDetailPageDocument?.QuerySelector("title");
             var title = titleNode?.TextContent;
-            var githubLinkNodes = centralDetailPageDocument.QuerySelectorAll("a").Where(n => n.Attributes["href"]?.Text().Contains("github") ?? false);
-            var githubLinks = string.Join(',', githubLinkNodes.Select(n => n.Attributes["href"]?.TextContent));
+            var githubLinkNodes = centralDetailPageDocument?.QuerySelectorAll("a").Where(n => n.Attributes["href"]?.Text().Contains("github") ?? false);
+            var githubLinks = string.Join(',', githubLinkNodes?.Select(n => n.Attributes["href"]?.TextContent) ?? new List<string>());
 
             if (!string.IsNullOrWhiteSpace(githubLinks))
             {
