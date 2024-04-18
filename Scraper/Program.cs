@@ -1,7 +1,6 @@
 ﻿namespace Scraper;
 
 using System.Net;
-using System.Net.Http.Headers;
 using System.Text;
 using AngleSharp;
 using AngleSharp.Dom;
@@ -14,53 +13,143 @@ class Program
         var mvnRepositoryBaseUrl = "http://mvnrepository.com";
         var mvnCentralBaseUrl = "http://central.sonatype.com";
         var searchQuery = "java%20library%20github";
+        // var searchQuery = "library";
         var sortOption = "popular";
-        var pageNb = 1;
-        var mvnrepositorySearchOptions = $"/search?q={searchQuery}&p={pageNb}&sort={sortOption}";
+        var minPageNb = 1;
+        var maxPageNb = 1;
+
         var _program = new Program();
+
         // We will store the html response of the request here
         var siteContent = string.Empty;
 
-        siteContent = await _program.GetContentAsync(mvnRepositoryBaseUrl + mvnrepositorySearchOptions);
+        var now = DateTime.Now.Ticks;
+        var outputDirPath = "../../APIDiff/dataset/ToProcess/";
+        var exceptionsDirPath = "../../APIDiff/dataset/Exceptions/";
+        //var fileName = $"Results/scrap_p{minPageNb}_{maxPageNb}_{now}.csv";
+        var csv = ".csv";
+        var fileName = $"{outputDirPath}{now}_scrap_p{minPageNb}_{maxPageNb}";
+        var exLog = $"{exceptionsDirPath}{now}_exceptions";
+        var builder = new StringBuilder();
+        var exceptionsLog = new StringBuilder();
 
-        var config = Configuration.Default.WithDefaultLoader();
-        var context = BrowsingContext.New(config);
-        var parser = context.GetService<IHtmlParser>();
-        var document = parser?.ParseDocument(siteContent);
+        var mvnRepositorySearchOptions = string.Empty;
 
-        var artifactLinkNodes = document?.QuerySelectorAll("[href]").Where(n => n.Attributes["href"]?.Text().Contains("artifact") ?? false);
+        await _program.ProcessQuery(minPageNb, maxPageNb, mvnRepositorySearchOptions, searchQuery, sortOption,
+                                    mvnRepositoryBaseUrl, mvnCentralBaseUrl, exceptionsLog, exLog, builder, fileName,
+                                    _program, now, csv, false);
 
-        var artifactLinks = new List<string>();
-        foreach (var link in artifactLinkNodes?.Select(ln => ln.Attributes["href"]?.TextContent) ?? new List<string>())
+    }
+
+    private async Task ProcessQuery(int minPageNb, int maxPageNb, string mvnRepositorySearchOptions, string searchQuery,
+                                    string sortOption, string mvnRepositoryBaseUrl, string mvnCentralBaseUrl,
+                                    StringBuilder exceptionsLog, string exLog, StringBuilder builder, string fileName,
+                                    Program _program, long now, string csv, bool isUsageQuery)
+    {
+        for (int curPage = minPageNb; curPage <= maxPageNb; curPage++)
         {
-            if (link is not null)
+            var searchUrl = string.Empty;
+
+            if (!isUsageQuery)
             {
-                artifactLinks.Add(link);
+                mvnRepositorySearchOptions = $"/search?q={searchQuery}&p={curPage}&sort={sortOption}";
+                searchUrl = mvnRepositoryBaseUrl + mvnRepositorySearchOptions;
             }
-        }
-        artifactLinks = artifactLinks.Distinct().ToList();
-
-        foreach (var artifactLink in artifactLinks)
-        {
-            var mvnDetailPageContent = await _program.GetContentAsync(mvnRepositoryBaseUrl + artifactLink);
-            var centralDetailPageContent = await _program.GetContentAsync(mvnCentralBaseUrl + artifactLink);
-
-            var mvnDetailPageDocument = parser?.ParseDocument(mvnDetailPageContent);
-            var centralDetailPageDocument = parser?.ParseDocument(centralDetailPageContent);
-
-            var titleNode = mvnDetailPageDocument?.QuerySelector("title");
-            var title = titleNode?.TextContent;
-            var githubLinkNodes = centralDetailPageDocument?.QuerySelectorAll("a").Where(n => n.Attributes["href"]?.Text().Contains("github") ?? false);
-            var githubLinks = string.Join(',', githubLinkNodes?.Select(n => n.Attributes["href"]?.TextContent) ?? new List<string>());
-
-            if (!string.IsNullOrWhiteSpace(githubLinks))
+            else
             {
-                Console.WriteLine($"{title} : {githubLinks}");
+                searchUrl = mvnRepositorySearchOptions;
+            }
+
+            Console.WriteLine($"isUsage: {isUsageQuery}, searchUrl: {searchUrl}");
+            string siteContent = await _program.GetContentAsync(searchUrl, exceptionsLog);
+
+            var config = Configuration.Default.WithDefaultLoader();
+            var context = BrowsingContext.New(config);
+            var parser = context.GetService<IHtmlParser>();
+            var document = parser?.ParseDocument(siteContent);
+
+            var artifactLinkNodes = document?.QuerySelectorAll("[href]").Where(n => n.Attributes["href"]?.Text().Contains("artifact") ?? false);
+
+            var artifactLinks = new List<string>();
+            foreach (var link in artifactLinkNodes?.Select(ln => ln.Attributes["href"]?.TextContent) ?? new List<string>())
+            {
+                if (link is not null)
+                {
+                    artifactLinks.Add(link);
+                }
+            }
+            artifactLinks = artifactLinks.Distinct().ToList();
+
+            var headerLine = "ArtifactTitle;ArtifactLink;Title;GithubLinks";
+            builder.AppendLine(headerLine);
+
+            foreach (var artifactLink in artifactLinks)
+            {
+                var mvnDetailPageContent = await _program.GetContentAsync(mvnRepositoryBaseUrl + artifactLink, exceptionsLog);
+                var centralDetailPageContent = await _program.GetContentAsync(mvnCentralBaseUrl + artifactLink, exceptionsLog);
+
+                var mvnDetailPageDocument = parser?.ParseDocument(mvnDetailPageContent);
+                var centralDetailPageDocument = parser?.ParseDocument(centralDetailPageContent);
+
+                var titleNode = mvnDetailPageDocument?.QuerySelector("title");
+                var title = titleNode?.TextContent;
+                var artifactTitleNode = centralDetailPageDocument?.QuerySelector("h1");
+                var artifactTitle = artifactTitleNode?.TextContent;
+                var githubLinkNodes = centralDetailPageDocument?.QuerySelectorAll("a").Where(n => n.Attributes["href"]?.Text().Contains("github") ?? false);
+                // var githubLinks = string.Join(',', githubLinkNodes?.Select(n => " " + n.Attributes["href"]?.TextContent) ?? new List<string>());
+                var githubLinks = githubLinkNodes?.Select(n => " " + n.Attributes["href"]?.TextContent).ToList() ?? new List<string>();
+
+                var validGitRepoLinks = new List<string>();
+                foreach (var link in githubLinks)
+                {
+                    try
+                    {
+                        await _program.GetContentAsync(link + ".git", new StringBuilder());
+                        validGitRepoLinks.Add(link);
+                        Console.WriteLine("Valid link: " + link);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(link + ": " + ex.Message);
+                    }
+                }
+
+                var validGitRepoLinksString = string.Join(',', validGitRepoLinks);
+                if (!string.IsNullOrWhiteSpace(validGitRepoLinksString))
+                {
+                    // var lineToAdd = $"{artifactTitle}; {artifactLink}; {title}; {githubLinks}";
+                    var lineToAdd = $"{artifactTitle}; {artifactLink}; {title}; {validGitRepoLinksString}";
+                    Console.WriteLine($"Page: {curPage}, line: {lineToAdd}");
+                    builder.AppendLine(lineToAdd);
+                }
+
+                if (!isUsageQuery)
+                {
+                    await ProcessQuery(0, 0, mvnRepositoryBaseUrl + artifactLink + "/usages", string.Empty, string.Empty, mvnRepositoryBaseUrl,
+                                       mvnCentralBaseUrl, new StringBuilder(), $"{exLog}_{artifactTitle}_usages",
+                                       new StringBuilder(), $"{fileName}_{artifactTitle}_usages", _program, now, csv, true);
+                }
+            }
+
+            try
+            {
+                File.WriteAllText(fileName + csv, builder.ToString());
+                File.WriteAllText(exLog + csv, exceptionsLog.ToString());
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine(ex.Message);
+                var currentInner = ex.InnerException;
+                while (currentInner != null)
+                {
+                    Console.WriteLine(currentInner.Message);
+                    currentInner = currentInner.InnerException;
+                }
             }
         }
     }
 
-    private async Task<string> GetContentAsync(string url)
+    private async Task<string> GetContentAsync(string url, StringBuilder exSb)
     {
         HttpClientHandler handler = new HttpClientHandler
         {
@@ -78,19 +167,21 @@ class Program
         // httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept-Charset", "ISO-8859-1");
         // httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Key", api_key);
 
-        var response = await httpClient.GetAsync(url);
-
+        var response = new HttpResponseMessage();
         try
         {
+            response = await httpClient.GetAsync(url);
             response.EnsureSuccessStatusCode();
         }
         catch (Exception ex)
         {
-            Console.WriteLine(ex.Message);
+            Console.WriteLine($"{url}: {ex.Message}");
+            exSb.AppendLine($"{url}: {ex.Message}");
             var currentInner = ex.InnerException;
             while (currentInner != null)
             {
                 Console.WriteLine(currentInner.Message);
+                exSb.AppendLine($"{url}: {currentInner.Message}");
                 currentInner = currentInner.InnerException;
             }
         }
