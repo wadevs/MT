@@ -11,23 +11,28 @@ using AngleSharp.Html.Parser;
 class Program
 {
     public static readonly string ARTIFACT_LINK_PATH = "/artifact/";
+    public static readonly string OPEN_SOURCE = "open-source/";
+
     static async Task Main(string[] args)
     {
         var mvnRepositoryBaseUrl = "http://mvnrepository.com";
         var mvnCentralBaseUrl = "http://central.sonatype.com";
         var searchQuery = "java%20library%20github";
+
         // var searchQuery = "PhilJay/MPAndroidChart";
         // var searchQuery = "library";
-        // var categorySearch = "open-source/testing-frameworks"; //done
-        // var categorySearch = "open-source/config-libraries"; //done
-        // var categorySearch = "open-source/concurrency-libraries"; // done
-        var categorySearch = "open-source/reflection-libraries"; //done
-        // var categorySearch = "open-source/assertion-libraries"; //done
-        // var categorySearch = "open-source/validation"; //done
-        // var categorySearch = "open-source/bytecode-libraries"; //done
-        // var categorySearch = "open-source/base64-libraries"; //done
-        // var categorySearch = "open-source/json-libraries"; //done
-        // var categorySearch = "open-source/annotation-libraries";
+
+        // var categorySearch = "testing-frameworks"; //done
+        // var categorySearch = "config-libraries"; //done
+        // var categorySearch = "concurrency-libraries"; //done
+        // var categorySearch = "reflection-libraries"; //done
+        // var categorySearch = "assertion-libraries"; //done
+        // var categorySearch = "validation"; //
+        // var categorySearch = "bytecode-libraries"; //done
+        // var categorySearch = "base64-libraries"; //done
+        // var categorySearch = "json-libraries"; //done
+        var categorySearch = "annotation-libraries"; //done
+        categorySearch = OPEN_SOURCE + categorySearch;
 
         var sortOption = "popular";
         var minPageNb = 1;
@@ -172,9 +177,18 @@ class Program
             {
                 if (atLeastOneLine)
                 {
-                    File.WriteAllText(outputDirPath + fileName + csv, builder.ToString());
+                    var relevantName = fileName;
+                    if (!isUsageQuery)
+                    {
+                        relevantName = fileName + $"-{curPage}-" + categorySearch?.Replace(OPEN_SOURCE, "");
+                    }
+                    File.WriteAllText(outputDirPath + relevantName + csv, builder.ToString());
                 }
-                File.WriteAllText(exLog + csv, exceptionsLog.ToString());
+
+                if (exceptionsLog.Length > 0)
+                {
+                    File.WriteAllText(exLog + "_" + fileName + csv, exceptionsLog.ToString());
+                }
             }
             catch (Exception ex)
             {
